@@ -1,0 +1,24 @@
+[
+  {
+    "id": 1765573589192,
+    "fileName": "National Youth Service Corps.pdf",
+    "pdf_url": "/uploads/1765573589179-National Youth Service Corps.pdf",
+    "title": "technical drawing",
+    "course_code": "mec202",
+    "department": "Computer Engineering Technology",
+    "level": "ND2",
+    "semester": "First Semester",
+    "year": "2021"
+  },
+  {
+    "id": 1765570360799,
+    "fileName": "MEDICAL REPORT-1.pdf",
+    "pdf_url": "/uploads/1765570360751-MEDICAL REPORT-1.pdf",
+    "title": "programming",
+    "course_code": "cte301",
+    "department": "computer engineering",
+    "level": "HND1",
+    "semester": "First Semester",
+    "year": "2019"
+  }
+]

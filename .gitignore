@@ -1,0 +1,23 @@
+# Node modules
+**/node_modules/
+
+# Environment variables
+**/.env
+
+# Build output
+frontend/build/
+backend/dist/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE configs
+.vscode/
+.idea/
+firebase-admin-setup/serviceAccountKey.json
+echo firebase-admin-setup/serviceAccountKey.json 
+
