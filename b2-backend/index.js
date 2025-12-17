@@ -1,3 +1,4 @@
+// index.js
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -18,10 +19,10 @@ app.use(
 );
 
 // ---------------- CORS ----------------
-// Allow your frontend origin (replace with your Netlify URL)
+// Allow Netlify frontend + localhost for testing
 app.use(
   cors({
-    origin: ["https://questvaultt.netlify.app"],
+    origin: ["https://questvaultt.netlify.app", "http://localhost:3000"],
     methods: ["GET", "POST", "DELETE"],
     allowedHeaders: ["Content-Type"],
   })
@@ -31,10 +32,13 @@ app.use(express.json());
 
 // ---------------- Supabase ----------------
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY; // service role key
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// ---------------- Multer ----------------
+// ---------------- Memory store ----------------
+let questions = [];
+
+// ---------------- Multer upload ----------------
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
@@ -43,19 +47,8 @@ const upload = multer({
 // ---------------- Routes ----------------
 app.get("/", (req, res) => res.send("Backend running ✅"));
 
-// Get all questions from Supabase table
-app.get("/questions", async (req, res) => {
-  try {
-    const { data, error } = await supabase.from("questions").select("*");
-    if (error) throw error;
-    res.json(data);
-  } catch (err) {
-    console.error("FETCH ERROR:", err);
-    res.status(500).json({ error: "Failed to fetch questions ❌", details: err.message });
-  }
-});
+app.get("/questions", (req, res) => res.json(questions));
 
-// Upload a new PDF
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
@@ -63,74 +56,56 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
+    // Use timestamp + original file name
     const fileName = `${Date.now()}-${file.originalname}`;
-    const filePath = `pdfs/${fileName}`;
 
-    // Upload file to Supabase storage
+    // Upload to Supabase bucket 'pquestion-pdf'
     const { error: uploadError } = await supabase.storage
       .from("pquestion-pdf")
-      .upload(filePath, file.buffer, { contentType: "application/pdf" });
+      .upload(fileName, file.buffer, { contentType: "application/pdf" });
 
-    if (uploadError) throw uploadError;
-
-    // Insert metadata into Supabase table
-    const { data, error: insertError } = await supabase
-      .from("questions")
-      .insert([
-        {
-          title,
-          course_code,
-          department,
-          level,
-          semester,
-          year,
-          pdf_path: filePath,
-        },
-      ])
-      .select()
-      .single();
-
-    if (insertError) throw insertError;
+    if (uploadError) {
+      console.error("Supabase upload error:", uploadError);
+      return res.status(500).json({ error: uploadError.message });
+    }
 
     // Get public URL
-    const { data: publicData } = supabase.storage
-      .from("pquestion-pdf")
-      .getPublicUrl(filePath);
+    const { data } = supabase.storage.from("pquestion-pdf").getPublicUrl(fileName);
 
-    res.json({
-      message: "Upload successful ✅",
-      data: { ...data, pdf_url: publicData.publicUrl },
-    });
+    // Save in-memory question list
+    const newQuestion = {
+      id: Date.now().toString(),
+      title,
+      course_code,
+      department,
+      level,
+      semester,
+      year,
+      pdf_url: data.publicUrl,
+    };
+    questions.push(newQuestion);
+
+    res.json({ message: "Upload successful ✅", data: newQuestion });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
     res.status(500).json({ error: "Upload failed ❌", details: err.message });
   }
 });
 
-// Delete a question and its file
 app.delete("/questions/:id", async (req, res) => {
   try {
     const { id } = req.params;
+    const question = questions.find((q) => q.id === id);
+    if (!question) return res.status(404).json({ error: "Question not found" });
 
-    // Get question from Supabase table
-    const { data: question, error: fetchError } = await supabase
-      .from("questions")
-      .select("*")
-      .eq("id", id)
-      .single();
+    // Extract file path from URL
+    const filePath = question.pdf_url.split("/storage/v1/object/public/pquestion-pdf/")[1];
 
-    if (fetchError) return res.status(404).json({ error: "Question not found" });
+    const { error } = await supabase.storage.from("pquestion-pdf").remove([filePath]);
+    if (error) throw error;
 
-    // Delete file from storage
-    const { error: deleteError } = await supabase.storage
-      .from("pquestion-pdf")
-      .remove([question.pdf_path]);
-
-    if (deleteError) throw deleteError;
-
-    // Delete record from table
-    const { error: dbDeleteError } = await supabase.from("questions").delete().eq("id", id);
-    if (dbDeleteError) throw dbDeleteError;
+    // Remove from in-memory list
+    questions = questions.filter((q) => q.id !== id);
 
     res.json({ message: "Question deleted ✅" });
   } catch (err) {
