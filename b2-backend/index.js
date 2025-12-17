@@ -10,20 +10,22 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-/* ---------------- BASIC SECURITY ---------------- */
+/* ---------------- SECURITY ---------------- */
+// Disable CSP completely (Netlify + Render uploads need this)
+app.use(helmet({ contentSecurityPolicy: false }));
+
+/* ---------------- CORS (VERY IMPORTANT) ---------------- */
 app.use(
-  helmet({
-    contentSecurityPolicy: false, // ❗ disable CSP (important for Netlify + uploads)
+  cors({
+    origin: "*",
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-/* ---------------- CORS ---------------- */
-app.use(
-  cors({
-    origin: "*", // allow Netlify frontend
-    methods: ["GET", "POST", "DELETE"],
-  })
-);
+// 🔥 THIS FIXES UPLOAD FAILURE
+app.options("*", cors());
 
 app.use(express.json());
 
@@ -75,7 +77,6 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       .from("past-question-pdfs")
       .upload(fileName, file.buffer, {
         contentType: "application/pdf",
-        upsert: false,
       });
 
     if (uploadError) throw uploadError;
@@ -100,7 +101,10 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     res.json({ message: "Upload successful", data: newQuestion });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ error: "Upload failed", details: err.message });
+    res.status(500).json({
+      error: "Upload failed",
+      details: err.message,
+    });
   }
 });
 
@@ -129,7 +133,10 @@ app.delete("/questions/:id", async (req, res) => {
     res.json({ message: "Question deleted" });
   } catch (err) {
     console.error("DELETE ERROR:", err);
-    res.status(500).json({ error: "Delete failed", details: err.message });
+    res.status(500).json({
+      error: "Delete failed",
+      details: err.message,
+    });
   }
 });
 
