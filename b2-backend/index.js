@@ -11,17 +11,17 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-/* ---------------- BASIC SECURITY ---------------- */
+/* ---------------- SECURITY ---------------- */
 app.use(
   helmet({
-    contentSecurityPolicy: false, // ❌ Disable CSP for uploads
+    contentSecurityPolicy: false, // Disable CSP for file uploads
   })
 );
 
 /* ---------------- CORS ---------------- */
 app.use(
   cors({
-    origin: "*", // allow Netlify frontend
+    origin: "*", // allow your frontend
     methods: ["GET", "POST", "DELETE"],
   })
 );
@@ -29,7 +29,7 @@ app.use(
 /* ---------------- JSON PARSER ---------------- */
 app.use(express.json());
 
-/* ---------------- SUPABASE ---------------- */
+/* ---------------- SUPABASE CLIENT ---------------- */
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -40,13 +40,13 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-/* ---------------- MEMORY STORE ---------------- */
+/* ---------------- IN-MEMORY STORE ---------------- */
 let questions = [];
 
 /* ---------------- FILE UPLOAD ---------------- */
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
 /* ---------------- ROUTES ---------------- */
@@ -69,17 +69,17 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     const fileName = `${Date.now()}-${file.originalname}`;
 
-    // Upload to Supabase
+    // Upload to Supabase storage
     const { error: uploadError } = await supabase.storage
-      .from("past-question-pdfs") // <-- your bucket name
-      .upload(fileName, file.buffer, { contentType: "application/pdf" });
+      .from("past-question-pdfs")
+      .upload(fileName, file.buffer, { contentType: "application/pdf", upsert: false });
 
     if (uploadError) throw uploadError;
 
     // Get public URL
-    const { data } = supabase.storage
+    const publicUrl = supabase.storage
       .from("past-question-pdfs")
-      .getPublicUrl(fileName);
+      .getPublicUrl(fileName).data.publicUrl;
 
     const newQuestion = {
       id: Date.now().toString(),
@@ -89,7 +89,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       level,
       semester,
       year,
-      pdf_url: data.publicUrl,
+      pdf_url: publicUrl,
     };
 
     questions.push(newQuestion);
@@ -106,17 +106,21 @@ app.delete("/questions/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const question = questions.find((q) => q.id === id);
+
     if (!question) return res.status(404).json({ error: "Question not found" });
 
-    // Extract file path from URL
     const filePath = question.pdf_url.split(
       "/storage/v1/object/public/past-question-pdfs/"
     )[1];
 
-    const { error } = await supabase.storage.from("past-question-pdfs").remove([filePath]);
+    const { error } = await supabase.storage
+      .from("past-question-pdfs")
+      .remove([filePath]);
+
     if (error) throw error;
 
     questions = questions.filter((q) => q.id !== id);
+
     res.json({ message: "Question deleted ✅" });
   } catch (err) {
     console.error("DELETE ERROR:", err);
