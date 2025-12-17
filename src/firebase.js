@@ -2,23 +2,22 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage"; // <-- added for file uploads
+import { getStorage } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCmhxr85PQ1wUUka7icgD4hxlRCo1q93T8",
-  authDomain: "questvault-986b1.firebaseapp.com",
-  projectId: "questvault-986b1",
-  storageBucket: "questvault-986b1.appspot.com",
-  messagingSenderId: "737065810316",
-  appId: "1:737065810316:web:fb35c10c79ecafb13a3ea9",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// Export Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const storage = getStorage(app); // <-- export storage for file uploads
+export const storage = getStorage(app);
 
 export default app;
+
