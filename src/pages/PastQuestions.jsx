@@ -1,9 +1,10 @@
+// src/pages/PastQuestions.jsx
 import React, { useEffect, useState } from "react";
 import { Search, ArrowLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-// Use environment variable for backend
-const BACKEND = process.env.REACT_APP_BACKEND_URL;
+// Fixed backend URL
+const BACKEND = "https://questvault-2.onrender.com";
 
 const PastQuestions = () => {
   const navigate = useNavigate();
@@ -17,6 +18,7 @@ const PastQuestions = () => {
   const [year, setYear] = useState("All");
   const [search, setSearch] = useState("");
 
+  // Fetch questions from backend
   useEffect(() => {
     const fetchQuestions = async () => {
       try {
@@ -33,6 +35,7 @@ const PastQuestions = () => {
     fetchQuestions();
   }, []);
 
+  // Filter questions
   const filtered = questions.filter((q) => {
     const levelMatch = level === "All" || q.level === level;
     const semesterMatch = semester === "All" || q.semester === semester;
@@ -91,12 +94,7 @@ const PastQuestions = () => {
           </select>
 
           <select value={department} onChange={(e) => setDepartment(e.target.value)} className="border p-2 rounded flex-1">
-            {[
-              "All",
-              "Computer Engineering Technology",
-              "Electrical Engineering Technology",
-              "Civil Engineering Technology"
-            ].map((o) => <option key={o}>{o}</option>)}
+            {["All", "Computer Engineering Technology", "Electrical Engineering Technology", "Civil Engineering Technology"].map((o) => <option key={o}>{o}</option>)}
           </select>
 
           <select value={year} onChange={(e) => setYear(e.target.value)} className="border p-2 rounded flex-1">
@@ -107,45 +105,45 @@ const PastQuestions = () => {
 
       {/* Questions List */}
       <div className="space-y-4 px-4 pb-10">
-        {filtered.map((q) => (
-          <div
-            key={q.id}
-            className="p-1 border-2 border-dashed border-blue-400 rounded-2xl transform transition hover:scale-105 hover:shadow-lg"
-          >
-            <div className="bg-white rounded-xl p-4 sm:p-5">
-              <div className="space-y-1 mb-4 sm:mb-6">
+        {filtered.length > 0 ? (
+          filtered.map((q) => (
+            <div
+              key={q.id}
+              className="p-1 border-2 border-dashed border-blue-400 rounded-2xl transform transition hover:scale-105 hover:shadow-lg"
+            >
+              <div className="bg-white rounded-xl p-4 sm:p-5 space-y-1">
                 <p className="text-sm"><strong>Department:</strong> {q.department}</p>
                 <p className="text-sm"><strong>Course Title:</strong> {q.title}</p>
                 <p className="text-sm"><strong>Course Code:</strong> {q.course_code}</p>
                 <p className="text-sm"><strong>Level:</strong> {q.level}</p>
+
+                {/* View & Download Buttons */}
+                {q.pdf_url && (
+                  <div className="flex justify-end gap-2 flex-wrap mt-2">
+                    <a
+                      href={q.pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-[#635BFF] hover:bg-[#5249e6] text-white text-xs font-bold py-2 px-4 rounded-lg shadow-md cursor-pointer"
+                    >
+                      View PDF
+                    </a>
+
+                    <a
+                      href={q.pdf_url}
+                      download
+                      className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-4 rounded-lg shadow-md cursor-pointer"
+                    >
+                      Download
+                    </a>
+                  </div>
+                )}
               </div>
-
-              {/* View & Download Buttons */}
-              {q.pdf_url && (
-                <div className="flex justify-end gap-2 flex-wrap">
-                  <a
-                    href={q.pdf_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="bg-[#635BFF] hover:bg-[#5249e6] text-white text-xs font-bold py-2 px-4 rounded-lg shadow-md cursor-pointer"
-                  >
-                    View PDF
-                  </a>
-
-                  <a
-                    href={q.pdf_url}
-                    download
-                    className="bg-green-600 hover:bg-green-700 text-white text-xs font-bold py-2 px-4 rounded-lg shadow-md cursor-pointer"
-                  >
-                    Download
-                  </a>
-                </div>
-              )}
             </div>
-          </div>
-        ))}
-
-        {filtered.length === 0 && <p className="text-gray-500 text-center">No questions found.</p>}
+          ))
+        ) : (
+          <p className="text-gray-500 text-center">No questions found.</p>
+        )}
       </div>
     </div>
   );
