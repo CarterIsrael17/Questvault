@@ -5,7 +5,6 @@ const BACKEND = process.env.REACT_APP_BACKEND_URL;
 
 const AdminPage = () => {
   const navigate = useNavigate();
-
   const [department, setDepartment] = useState("");
   const [title, setTitle] = useState("");
   const [courseCode, setCourseCode] = useState("");
@@ -40,10 +39,7 @@ const AdminPage = () => {
     formData.append("semester", semester);
     formData.append("year", year);
 
-    const res = await fetch(`${BACKEND}/upload`, {
-      method: "POST",
-      body: formData
-    });
+    const res = await fetch(`${BACKEND}/upload`, { method: "POST", body: formData });
     const data = await res.json();
 
     if (res.ok) {
@@ -86,7 +82,6 @@ const AdminPage = () => {
 
         <input type="number" placeholder="Year" value={year} onChange={e => setYear(e.target.value)} required className="border p-2 w-full"/>
         <input type="file" accept="application/pdf" onChange={e => setFile(e.target.files[0])} required />
-
         <button className="bg-blue-600 text-white px-4 py-2 rounded">{loading ? "Uploading..." : "Upload PDF"}</button>
       </form>
 
