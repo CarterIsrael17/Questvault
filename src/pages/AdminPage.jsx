@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-const BACKEND = process.env.REACT_APP_BACKEND_URL;
+// Use your deployed backend URL directly
+const BACKEND = "https://questvault-2.onrender.com";
 
 const AdminPage = () => {
   const navigate = useNavigate();
@@ -16,9 +17,13 @@ const AdminPage = () => {
   const [loading, setLoading] = useState(false);
 
   const fetchQuestions = async () => {
-    const res = await fetch(`${BACKEND}/questions`);
-    const data = await res.json();
-    setQuestions(data);
+    try {
+      const res = await fetch(`${BACKEND}/questions`);
+      const data = await res.json();
+      setQuestions(data);
+    } catch (err) {
+      console.error("Failed to fetch questions:", err);
+    }
   };
 
   useEffect(() => {
@@ -39,22 +44,38 @@ const AdminPage = () => {
     formData.append("semester", semester);
     formData.append("year", year);
 
-    const res = await fetch(`${BACKEND}/upload`, { method: "POST", body: formData });
-    const data = await res.json();
+    try {
+      const res = await fetch(`${BACKEND}/upload`, {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
 
-    if (res.ok) {
-      alert("Uploaded successfully!");
-      fetchQuestions();
-    } else {
-      alert(data.error);
+      if (res.ok) {
+        alert("Uploaded successfully!");
+        fetchQuestions();
+        setFile(null); // clear file input
+        e.target.reset(); // reset form fields
+      } else {
+        alert(data.error || "Upload failed");
+      }
+    } catch (err) {
+      console.error("Upload error:", err);
+      alert("Upload failed. Check console for details.");
     }
+
     setLoading(false);
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this?")) return;
-    await fetch(`${BACKEND}/questions/${id}`, { method: "DELETE" });
-    fetchQuestions();
+    try {
+      await fetch(`${BACKEND}/questions/${id}`, { method: "DELETE" });
+      fetchQuestions();
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("Delete failed. Check console for details.");
+    }
   };
 
   return (
@@ -91,8 +112,12 @@ const AdminPage = () => {
           <li key={q.id} className="p-3 border rounded flex justify-between items-center">
             <div><strong>{q.title}</strong> — {q.course_code} ({q.year})</div>
             <div className="flex gap-2">
-              <a href={q.pdf_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View</a>
-              <a href={q.pdf_url} download className="text-green-600 underline">Download</a>
+              {q.pdf_url && (
+                <>
+                  <a href={q.pdf_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">View</a>
+                  <a href={q.pdf_url} download className="text-green-600 underline">Download</a>
+                </>
+              )}
               <button onClick={() => handleDelete(q.id)} className="text-red-600">Delete</button>
             </div>
           </li>
