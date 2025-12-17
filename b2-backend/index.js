@@ -1,4 +1,3 @@
-// index.js
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -11,87 +10,59 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-/* ---------------- SECURITY ---------------- */
-app.use(
-  helmet({
-    contentSecurityPolicy: false, // Disable CSP for file uploads
-  })
-);
+// ---------------- Helmet ----------------
+app.use(helmet({
+  contentSecurityPolicy: false // disable CSP for uploads
+}));
 
-/* ---------------- CORS ---------------- */
-app.use(
-  cors({
-    origin: "*", // allow your frontend
-    methods: ["GET", "POST", "DELETE"],
-  })
-);
+// ---------------- CORS ----------------
+// Allow your frontend origin (replace with your Netlify URL)
+app.use(cors({
+  origin: ["https://questvaultt.netlify.app"], 
+  methods: ["GET", "POST", "DELETE"],
+  allowedHeaders: ["Content-Type"]
+}));
 
-/* ---------------- JSON PARSER ---------------- */
 app.use(express.json());
 
-/* ---------------- SUPABASE CLIENT ---------------- */
+// ---------------- Supabase ----------------
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error("❌ Missing Supabase environment variables");
-  process.exit(1);
-}
-
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-/* ---------------- IN-MEMORY STORE ---------------- */
+// ---------------- Memory store ----------------
 let questions = [];
 
-/* ---------------- FILE UPLOAD ---------------- */
+// ---------------- Multer upload ----------------
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB max
 });
 
-/* ---------------- ROUTES ---------------- */
+// ---------------- Routes ----------------
+app.get("/", (req, res) => res.send("Backend running ✅"));
 
-// Health check
-app.get("/", (req, res) => res.send("QuestVault backend running ✅"));
+app.get("/questions", (req, res) => res.json(questions));
 
-// Get all questions
-app.get("/questions", (req, res) => {
-  res.json(questions);
-});
-
-// Upload PDF
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
     const { title, course_code, department, level, semester, year } = req.body;
-
     if (!file) return res.status(400).json({ error: "No file uploaded" });
 
     const fileName = `${Date.now()}-${file.originalname}`;
 
-    // Upload to Supabase storage
     const { error: uploadError } = await supabase.storage
       .from("past-question-pdfs")
-      .upload(fileName, file.buffer, { contentType: "application/pdf", upsert: false });
+      .upload(fileName, file.buffer, { contentType: "application/pdf" });
 
     if (uploadError) throw uploadError;
 
-    // Get public URL
-    const publicUrl = supabase.storage
+    const { data } = supabase.storage
       .from("past-question-pdfs")
-      .getPublicUrl(fileName).data.publicUrl;
+      .getPublicUrl(fileName);
 
-    const newQuestion = {
-      id: Date.now().toString(),
-      title,
-      course_code,
-      department,
-      level,
-      semester,
-      year,
-      pdf_url: publicUrl,
-    };
-
+    const newQuestion = { id: Date.now().toString(), title, course_code, department, level, semester, year, pdf_url: data.publicUrl };
     questions.push(newQuestion);
 
     res.json({ message: "Upload successful ✅", data: newQuestion });
@@ -101,26 +72,17 @@ app.post("/upload", upload.single("file"), async (req, res) => {
   }
 });
 
-// Delete question
 app.delete("/questions/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const question = questions.find((q) => q.id === id);
-
+    const question = questions.find(q => q.id === id);
     if (!question) return res.status(404).json({ error: "Question not found" });
 
-    const filePath = question.pdf_url.split(
-      "/storage/v1/object/public/past-question-pdfs/"
-    )[1];
-
-    const { error } = await supabase.storage
-      .from("past-question-pdfs")
-      .remove([filePath]);
-
+    const filePath = question.pdf_url.split("/storage/v1/object/public/past-question-pdfs/")[1];
+    const { error } = await supabase.storage.from("past-question-pdfs").remove([filePath]);
     if (error) throw error;
 
-    questions = questions.filter((q) => q.id !== id);
-
+    questions = questions.filter(q => q.id !== id);
     res.json({ message: "Question deleted ✅" });
   } catch (err) {
     console.error("DELETE ERROR:", err);
@@ -128,5 +90,5 @@ app.delete("/questions/:id", async (req, res) => {
   }
 });
 
-/* ---------------- START SERVER ---------------- */
+// ---------------- Start server ----------------
 app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
