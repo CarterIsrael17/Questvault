@@ -53,12 +53,7 @@ const AdminPage = () => {
         body: formData,
       });
 
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        data = { error: "Invalid server response" };
-      }
+      const data = await res.json().catch(() => ({ error: "Invalid server response" }));
 
       if (res.ok) {
         alert("Uploaded successfully!");
@@ -88,7 +83,11 @@ const AdminPage = () => {
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this question?")) return;
     try {
-      await fetch(`${BACKEND}/questions/${id}`, { method: "DELETE" });
+      const res = await fetch(`${BACKEND}/questions/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Delete failed");
+      }
       fetchQuestions();
     } catch (err) {
       console.error("Delete error:", err);
