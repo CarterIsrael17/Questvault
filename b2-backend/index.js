@@ -1,4 +1,3 @@
-// index.js
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -11,15 +10,14 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// ---------------- Helmet ----------------
+// ---------------- Security ----------------
 app.use(
   helmet({
-    contentSecurityPolicy: false, // disable CSP for uploads
+    contentSecurityPolicy: false,
   })
 );
 
 // ---------------- CORS ----------------
-// Allow Netlify frontend + localhost for testing
 app.use(
   cors({
     origin: ["https://questvaultt.netlify.app", "http://localhost:3000"],
@@ -31,88 +29,128 @@ app.use(
 app.use(express.json());
 
 // ---------------- Supabase ----------------
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-// ---------------- Memory store ----------------
-let questions = [];
-
-// ---------------- Multer upload ----------------
+// ---------------- Multer ----------------
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  limits: { fileSize: 10 * 1024 * 1024 },
 });
 
 // ---------------- Routes ----------------
-app.get("/", (req, res) => res.send("Backend running ✅"));
+app.get("/", (req, res) => {
+  res.send("Backend running ✅");
+});
 
-app.get("/questions", (req, res) => res.json(questions));
+// ✅ GET ALL QUESTIONS (FROM DATABASE)
+app.get("/questions", async (req, res) => {
+  const { data, error } = await supabase
+    .from("past_questions")
+    .select("*")
+    .order("created_at", { ascending: false });
 
+  if (error) {
+    console.error(error);
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json(data);
+});
+
+// ✅ UPLOAD QUESTION
 app.post("/upload", upload.single("file"), async (req, res) => {
   try {
     const file = req.file;
     const { title, course_code, department, level, semester, year } = req.body;
 
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
-    // Use timestamp + original file name
     const fileName = `${Date.now()}-${file.originalname}`;
 
-    // Upload to Supabase bucket 'pquestion-pdf'
+    // Upload PDF to Supabase Storage
     const { error: uploadError } = await supabase.storage
       .from("pquestion-pdf")
-      .upload(fileName, file.buffer, { contentType: "application/pdf" });
+      .upload(fileName, file.buffer, {
+        contentType: "application/pdf",
+      });
 
     if (uploadError) {
-      console.error("Supabase upload error:", uploadError);
+      console.error(uploadError);
       return res.status(500).json({ error: uploadError.message });
     }
 
     // Get public URL
-    const { data } = supabase.storage.from("pquestion-pdf").getPublicUrl(fileName);
+    const { data: urlData } = supabase.storage
+      .from("pquestion-pdf")
+      .getPublicUrl(fileName);
 
-    // Save in-memory question list
-    const newQuestion = {
-      id: Date.now().toString(),
-      title,
-      course_code,
-      department,
-      level,
-      semester,
-      year,
-      pdf_url: data.publicUrl,
-    };
-    questions.push(newQuestion);
+    // Save metadata to database
+    const { data, error } = await supabase
+      .from("past_questions")
+      .insert([
+        {
+          title,
+          course_code,
+          department,
+          level,
+          semester,
+          year,
+          pdf_url: urlData.publicUrl,
+        },
+      ])
+      .select()
+      .single();
 
-    res.json({ message: "Upload successful ✅", data: newQuestion });
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    res.json({
+      message: "Upload successful ✅",
+      data,
+    });
   } catch (err) {
-    console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ error: "Upload failed ❌", details: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Upload failed ❌" });
   }
 });
 
+// ✅ DELETE QUESTION
 app.delete("/questions/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const question = questions.find((q) => q.id === id);
-    if (!question) return res.status(404).json({ error: "Question not found" });
 
-    // Extract file path from URL
-    const filePath = question.pdf_url.split("/storage/v1/object/public/pquestion-pdf/")[1];
+    // Get record
+    const { data, error } = await supabase
+      .from("past_questions")
+      .select("pdf_url")
+      .eq("id", id)
+      .single();
 
-    const { error } = await supabase.storage.from("pquestion-pdf").remove([filePath]);
-    if (error) throw error;
+    if (error) return res.status(404).json({ error: "Not found" });
 
-    // Remove from in-memory list
-    questions = questions.filter((q) => q.id !== id);
+    const filePath = data.pdf_url.split("/pquestion-pdf/")[1];
 
-    res.json({ message: "Question deleted ✅" });
+    // Remove PDF from storage
+    await supabase.storage.from("pquestion-pdf").remove([filePath]);
+
+    // Remove record from DB
+    await supabase.from("past_questions").delete().eq("id", id);
+
+    res.json({ message: "Deleted successfully ✅" });
   } catch (err) {
-    console.error("DELETE ERROR:", err);
-    res.status(500).json({ error: "Delete failed ❌", details: err.message });
+    console.error(err);
+    res.status(500).json({ error: "Delete failed ❌" });
   }
 });
 
-// ---------------- Start server ----------------
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+// ---------------- Start ----------------
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
