@@ -20,7 +20,10 @@ app.use(
 // ---------------- CORS ----------------
 app.use(
   cors({
-    origin: ["https://questvaultt.netlify.app", "http://localhost:3000"],
+    origin: [
+      "https://questvaultt.netlify.app",
+      "http://localhost:3000",
+    ],
     methods: ["GET", "POST", "DELETE"],
     allowedHeaders: ["Content-Type"],
   })
@@ -37,7 +40,7 @@ const supabase = createClient(
 // ---------------- Multer ----------------
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
 // ---------------- Routes ----------------
@@ -45,7 +48,7 @@ app.get("/", (req, res) => {
   res.send("Backend running ✅");
 });
 
-// ✅ GET ALL QUESTIONS (FROM DATABASE)
+// ✅ GET ALL QUESTIONS
 app.get("/questions", async (req, res) => {
   const { data, error } = await supabase
     .from("past_questions")
@@ -57,7 +60,8 @@ app.get("/questions", async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  res.json(data);
+  // ALWAYS return array
+  res.json(data || []);
 });
 
 // ✅ UPLOAD QUESTION
@@ -89,7 +93,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       .from("pquestion-pdf")
       .getPublicUrl(fileName);
 
-    // Save metadata to database
+    // Save metadata to database (NO .single())
     const { data, error } = await supabase
       .from("past_questions")
       .insert([
@@ -103,8 +107,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
           pdf_url: urlData.publicUrl,
         },
       ])
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error(error);
@@ -113,7 +116,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     res.json({
       message: "Upload successful ✅",
-      data,
+      data: data[0], // safe return
     });
   } catch (err) {
     console.error(err);
@@ -133,15 +136,22 @@ app.delete("/questions/:id", async (req, res) => {
       .eq("id", id)
       .single();
 
-    if (error) return res.status(404).json({ error: "Not found" });
+    if (error || !data) {
+      return res.status(404).json({ error: "Not found" });
+    }
 
     const filePath = data.pdf_url.split("/pquestion-pdf/")[1];
 
     // Remove PDF from storage
-    await supabase.storage.from("pquestion-pdf").remove([filePath]);
+    await supabase.storage
+      .from("pquestion-pdf")
+      .remove([filePath]);
 
     // Remove record from DB
-    await supabase.from("past_questions").delete().eq("id", id);
+    await supabase
+      .from("past_questions")
+      .delete()
+      .eq("id", id);
 
     res.json({ message: "Deleted successfully ✅" });
   } catch (err) {
@@ -150,7 +160,7 @@ app.delete("/questions/:id", async (req, res) => {
   }
 });
 
-// ---------------- Start ----------------
+// ---------------- Start Server ----------------
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
