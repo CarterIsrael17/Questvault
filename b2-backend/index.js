@@ -10,40 +10,45 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// ---------------- Security ----------------
+// ---------------- SECURITY ----------------
 app.use(
   helmet({
     contentSecurityPolicy: false,
   })
 );
 
-// ---------------- CORS ----------------
+// ---------------- CORS (🔥 FIXED) ----------------
 app.use(
   cors({
     origin: [
       "https://questvaultt.netlify.app",
       "http://localhost:3000",
     ],
-    methods: ["GET", "POST", "DELETE"],
-    allowedHeaders: ["Content-Type"],
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
   })
 );
 
+// 🔥 VERY IMPORTANT: allow preflight
+app.options("*", cors());
+
+// ---------------- BODY PARSER ----------------
 app.use(express.json());
 
-// ---------------- Supabase ----------------
+// ---------------- SUPABASE ----------------
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ---------------- Multer ----------------
+// ---------------- MULTER ----------------
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
 });
 
-// ---------------- Routes ----------------
+// ---------------- ROUTES ----------------
 app.get("/", (req, res) => {
   res.send("Backend running ✅");
 });
@@ -56,11 +61,10 @@ app.get("/questions", async (req, res) => {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error(error);
+    console.error("FETCH ERROR:", error);
     return res.status(500).json({ error: error.message });
   }
 
-  // ALWAYS return array
   res.json(data || []);
 });
 
@@ -76,7 +80,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
 
     const fileName = `${Date.now()}-${file.originalname}`;
 
-    // Upload PDF to Supabase Storage
+    // Upload PDF to storage
     const { error: uploadError } = await supabase.storage
       .from("pquestion-pdf")
       .upload(fileName, file.buffer, {
@@ -84,7 +88,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       });
 
     if (uploadError) {
-      console.error(uploadError);
+      console.error("STORAGE ERROR:", uploadError);
       return res.status(500).json({ error: uploadError.message });
     }
 
@@ -93,7 +97,7 @@ app.post("/upload", upload.single("file"), async (req, res) => {
       .from("pquestion-pdf")
       .getPublicUrl(fileName);
 
-    // Save metadata to database (NO .single())
+    // Save to database
     const { data, error } = await supabase
       .from("past_questions")
       .insert([
@@ -107,20 +111,24 @@ app.post("/upload", upload.single("file"), async (req, res) => {
           pdf_url: urlData.publicUrl,
         },
       ])
-      .select();
+      .select()
+      .single();
 
     if (error) {
-      console.error(error);
+      console.error("DB ERROR:", error);
       return res.status(500).json({ error: error.message });
     }
 
     res.json({
       message: "Upload successful ✅",
-      data: data[0], // safe return
+      data,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Upload failed ❌" });
+    console.error("UPLOAD ERROR:", err);
+    res.status(500).json({
+      error: "Upload failed ❌",
+      details: err.message || err,
+    });
   }
 });
 
@@ -129,7 +137,6 @@ app.delete("/questions/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Get record
     const { data, error } = await supabase
       .from("past_questions")
       .select("pdf_url")
@@ -137,30 +144,22 @@ app.delete("/questions/:id", async (req, res) => {
       .single();
 
     if (error || !data) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: "Question not found" });
     }
 
     const filePath = data.pdf_url.split("/pquestion-pdf/")[1];
 
-    // Remove PDF from storage
-    await supabase.storage
-      .from("pquestion-pdf")
-      .remove([filePath]);
-
-    // Remove record from DB
-    await supabase
-      .from("past_questions")
-      .delete()
-      .eq("id", id);
+    await supabase.storage.from("pquestion-pdf").remove([filePath]);
+    await supabase.from("past_questions").delete().eq("id", id);
 
     res.json({ message: "Deleted successfully ✅" });
   } catch (err) {
-    console.error(err);
+    console.error("DELETE ERROR:", err);
     res.status(500).json({ error: "Delete failed ❌" });
   }
 });
 
-// ---------------- Start Server ----------------
+// ---------------- START SERVER ----------------
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
